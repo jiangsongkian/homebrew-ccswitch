@@ -1,6 +1,6 @@
 cask "cc-switch-rules" do
-  version "4.0.33-fork.1"
-  sha256 "2df9fbe417f42b3cdada48eedafbaebcd60e0308deb0110abada07cac0ce6959"
+  version "4.0.34-fork.1"
+  sha256 "de13f1d3f44d21fdf1e1af2d370e70e0cdb568611871a7824309a43b07a92b50"
 
   url "https://github.com/jiangsongkian/cc-switch/releases/download/rules-v#{version}/CC-Switch-rules-#{version}-macOS.dmg"
   name "CC Switch (Rules)"
