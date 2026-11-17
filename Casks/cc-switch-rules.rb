@@ -1,6 +1,6 @@
 cask "cc-switch-rules" do
   version "4.0.33-fork.1"
-  sha256 :no_check # 首次发布后由 Bump cask 工作流写入真实摘要
+  sha256 "2df9fbe417f42b3cdada48eedafbaebcd60e0308deb0110abada07cac0ce6959"
 
   url "https://github.com/jiangsongkian/cc-switch/releases/download/rules-v#{version}/CC-Switch-rules-v#{version}-macOS.dmg"
   name "CC Switch (Rules)"
