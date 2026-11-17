@@ -1,0 +1,117 @@
+name: Bump cask
+
+# 读 fork 仓库最新的非 prerelease rules-v* Release，把 dmg 的版本和 sha256
+# 写回 Casks/cc-switch-rules.rb。GitHub 的 release asset API 会带 digest 字段，
+# 没有时才下载 dmg 自己算。
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bump-cask
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPO: jiangsongkian/cc-switch
+  CASK_FILE: Casks/cc-switch-rules.rb
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve latest fork release
+        id: rel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${SOURCE_REPO}/releases?per_page=30" > "$RUNNER_TEMP/releases.json"
+          jq '[.[] | select(.prerelease == false) | select(.tag_name | startswith("rules-v"))][0]
+              | if . == null then {}
+                else {
+                  version: (.tag_name | sub("^rules-v"; "")),
+                  dmg: ([.assets[] | select(.name | endswith(".dmg"))][0])
+                }
+                end' "$RUNNER_TEMP/releases.json" > "$RUNNER_TEMP/rel.json"
+
+          version=$(jq -r '.version // empty' "$RUNNER_TEMP/rel.json")
+          if [ -z "$version" ]; then
+            echo "还没有 rules-v* 的正式 release，跳过"
+            exit 0
+          fi
+
+          url=$(jq -r '.dmg.browser_download_url // empty' "$RUNNER_TEMP/rel.json")
+          digest=$(jq -r '.dmg.digest // empty' "$RUNNER_TEMP/rel.json")
+          echo "version=${version}"
+          echo "url=${url}"
+          echo "digest=${digest:-（API 未提供，稍后下载计算）}"
+          {
+            echo "version=${version}"
+            echo "url=${url}"
+            echo "digest=${digest}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download dmg if the API has no digest
+        id: digest
+        if: steps.rel.outputs.version != '' && steps.rel.outputs.digest == ''
+        shell: bash
+        env:
+          URL: ${{ steps.rel.outputs.url }}
+        run: |
+          set -euo pipefail
+          curl -sSL "$URL" -o "$RUNNER_TEMP/app.dmg"
+          sha=$(shasum -a 256 "$RUNNER_TEMP/app.dmg" | awk '{print $1}')
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Update cask
+        id: update
+        if: steps.rel.outputs.version != ''
+        shell: bash
+        env:
+          VERSION: ${{ steps.rel.outputs.version }}
+          DIGEST: ${{ steps.rel.outputs.digest }}
+          FALLBACK_SHA: ${{ steps.digest.outputs.sha }}
+        run: |
+          set -euo pipefail
+          sha="${DIGEST#sha256:}"
+          if [ -z "$sha" ]; then sha="$FALLBACK_SHA"; fi
+          if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{64}$'; then
+            echo "拿不到有效的 sha256（得到：${sha}）" >&2
+            exit 1
+          fi
+
+          current_version=$(sed -nE 's/^  version "([^"]+)"$/\1/p' "$CASK_FILE")
+          current_sha=$(sed -nE 's/^  sha256 "([0-9a-f]{64})".*$/\1/p' "$CASK_FILE")
+          echo "cask: version=${current_version} sha256=${current_sha:-（非固定摘要）}"
+
+          if [ "$current_version" = "$VERSION" ] && [ "$current_sha" = "$sha" ]; then
+            echo "cask 已是最新，无需改动"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          sed -i -E "s|^  version \".*\"$|  version \"${VERSION}\"|" "$CASK_FILE"
+          sed -i -E "s|^  sha256 .*$|  sha256 \"${sha}\"|" "$CASK_FILE"
+          git diff -- "$CASK_FILE"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        if: steps.update.outputs.changed == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.rel.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$CASK_FILE"
+          git commit -m "cc-switch-rules ${VERSION}"
+          git push
