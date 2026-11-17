@@ -2,7 +2,7 @@ cask "cc-switch-rules" do
   version "4.0.33-fork.1"
   sha256 "2df9fbe417f42b3cdada48eedafbaebcd60e0308deb0110abada07cac0ce6959"
 
-  url "https://github.com/jiangsongkian/cc-switch/releases/download/rules-v#{version}/CC-Switch-rules-v#{version}-macOS.dmg"
+  url "https://github.com/jiangsongkian/cc-switch/releases/download/rules-v#{version}/CC-Switch-rules-#{version}-macOS.dmg"
   name "CC Switch (Rules)"
   desc "CC Switch fork with cross-app rules management"
   homepage "https://github.com/jiangsongkian/cc-switch"

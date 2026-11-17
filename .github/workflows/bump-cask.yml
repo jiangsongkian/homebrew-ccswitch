@@ -103,6 +103,25 @@ jobs:
           git diff -- "$CASK_FILE"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
+      # 曾经踩过：URL 模板里多一个 v，cask 能解析但下载 404。
+      # 改写后按实际模板渲染一次去探测，返回非 2xx 就不提交。
+      - name: Verify the cask URL resolves
+        if: steps.rel.outputs.version != ''
+        shell: bash
+        env:
+          VERSION: ${{ steps.rel.outputs.version }}
+        run: |
+          set -euo pipefail
+          template=$(sed -nE 's/^  url "(.*)"$/\1/p' "$CASK_FILE")
+          url=$(printf '%s' "$template" | sed "s|#{version}|${VERSION}|g")
+          echo "探测：${url}"
+          code=$(curl -sL -o /dev/null -w '%{http_code}' -r 0-0 \
+            --retry 3 --retry-delay 2 --max-time 60 "$url")
+          case "$code" in
+            2*) echo "OK (${code})" ;;
+            *) echo "cask URL 返回 ${code}：URL 模板和 release 资产名对不上" >&2; exit 1 ;;
+          esac
+
       - name: Commit and push
         if: steps.update.outputs.changed == 'true'
         shell: bash
